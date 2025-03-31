@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taxi Trip Time Prediction</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .form-container { background-color: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input, select { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        .result { background-color: #e8f5e9; padding: 15px; border-radius: 5px; display: none; }
+        #map { height: 300px; width: 100%; }
+        .hidden { display: none; }
+        .instructions { font-style: italic; color: #555; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Taxi Trip Time Prediction</h1>
+    
+    <div class="form-container">
+        <form id="predictionForm" onsubmit="predictTripTime(event)">
+            <div class="input-group">
+                <label for="input_method">Input Method:</label>
+                <select id="input_method" name="input_method" onchange="toggleInput()">
+                    <option value="datetime">Hour/Day & Distance</option>
+                    <option value="map">Map (Lat/Long) & Hour/Day</option>
+                </select>
+            </div>
+
+            <div id="datetime_inputs">
+                <div class="input-group">
+                    <label for="day_of_week_datetime">Day of Week:</label>
+                    <select id="day_of_week_datetime" name="day_of_week_datetime">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="time_datetime">Time of Day:</label>
+                    <input type="time" id="time_datetime" name="time_datetime">
+                </div>
+                <div class="input-group">
+                    <label for="distance_km_datetime">Distance (km):</label>
+                    <input type="number" id="distance_km_datetime" name="distance_km_datetime" min="0" max="1000" step="0.1">
+                </div>
+                <div class="input-group">
+                    <label for="call_type_datetime">Call Type:</label>
+                    <select id="call_type_datetime" name="call_type_datetime">
+                        <option value="A">A (Central Dispatch)</option>
+                        <option value="B" selected>B (Street Hail)</option>
+                        <option value="C">C (Other)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="map_inputs" class="hidden">
+                <div class="input-group">
+                    <label for="day_of_week_map">Day of Week:</label>
+                    <select id="day_of_week_map" name="day_of_week_map">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="time_map">Time of Day:</label>
+                    <input type="time" id="time_map" name="time_map">
+                </div>
+                <div class="input-group">
+                    <label for="call_type_map">Call Type:</label>
+                    <select id="call_type_map" name="call_type_map">
+                        <option value="A">A (Central Dispatch)</option>
+                        <option value="B" selected>B (Street Hail)</option>
+                        <option value="C">C (Other)</option>
+                    </select>
+                </div>
+                <div class="instructions">
+                    Click once to set the start point, click again to set the end point. Click a third time to reset.
+                </div>
+                <div id="map"></div>
+                <input type="hidden" id="distance_km_map" name="distance_km_map" value="">
+            </div>
+
+            <div class="input-group">
+                <label for="model">Select Model:</label>
+                <select id="model" name="model" required>
+                    <option value="Linear Regression">Linear Regression</option>
+                    <option value="Ridge Regression">Ridge Regression</option>
+                    <option value="Decision Tree">Decision Tree</option>
+                    <option value="Random Forest">Random Forest</option>
+                    <option value="Gradient Boosting">Gradient Boosting</option>
+                    <option value="K-Neighbors">K-Neighbors</option>
+                    <option value="XGBoost">XGBoost</option>
+                </select>
+            </div>
+            
+            <button type="submit">Predict Trip Time</button>
+        </form>
+    </div>
+    
+    <div id="result" class="result"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map, startMarker, endMarker;
+
+        function toggleInput() {
+            const method = document.getElementById('input_method').value;
+            document.getElementById('datetime_inputs').classList.toggle('hidden', method !== 'datetime');
+            document.getElementById('map_inputs').classList.toggle('hidden', method !== 'map');
+            if (method === 'map' && !map) initMap();
+        }
+
+        function initMap() {
+            map = L.map('map').setView([41.15, -8.62], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+
+            map.on('click', function(e) {
+                if (!startMarker) {
+                    startMarker = L.marker(e.latlng).addTo(map).bindPopup('Start');
+                } else if (!endMarker) {
+                    endMarker = L.marker(e.latlng).addTo(map).bindPopup('End');
+                    calculateDistance(e.latlng);
+                } else {
+                    map.removeLayer(startMarker);
+                    map.removeLayer(endMarker);
+                    startMarker = L.marker(e.latlng).addTo(map).bindPopup('Start');
+                    endMarker = null;
+                    document.getElementById('distance_km_map').value = '';
+                }
+            });
+        }
+
+        function calculateDistance(endLatLng) {
+            const startLat = startMarker.getLatLng().lat;
+            const startLon = startMarker.getLatLng().lng;
+            const endLat = endLatLng.lat;
+            const endLon = endLatLng.lng;
+
+            const R = 6371; // Earth's radius in km
+            const dLat = (endLat - startLat) * Math.PI / 180;
+            const dLon = (endLon - startLon) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(startLat * Math.PI / 180) * Math.cos(endLat * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c;
+
+            document.getElementById('distance_km_map').value = distance.toFixed(2);
+        }
+
+        async function predictTripTime(event) {
+            event.preventDefault();
+            const method = document.getElementById('input_method').value;
+            const selectedModel = document.getElementById('model').value;
+            let data;
+
+            if (method === 'datetime') {
+                data = {
+                    model: selectedModel,
+                    input_method: 'datetime',
+                    time: document.getElementById('time_datetime').value,
+                    distance_km: document.getElementById('distance_km_datetime').value,
+                    call_type: document.getElementById('call_type_datetime').value,
+                    day_of_week: document.getElementById('day_of_week_datetime').value
+                };
+            } else {
+                data = {
+                    model: selectedModel,
+                    input_method: 'map',
+                    time: document.getElementById('time_map').value,
+                    distance_km: document.getElementById('distance_km_map').value,
+                    call_type: document.getElementById('call_type_map').value,
+                    day_of_week: document.getElementById('day_of_week_map').value
+                };
+            }
+
+            try {
+                const response = await fetch('https://fyp-taxi-trip-time-prediction.onrender.com/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('result').style.display = 'block';
+                    document.getElementById('result').innerHTML = `
+                        <h3>Prediction Result</h3>
+                        <p>Model: ${selectedModel}</p>
+                        <p>Estimated Trip Time: ${result.prediction.toFixed(2)} minutes</p>
+                        <h4>Your Inputs:</h4>
+                        <ul>
+                            <li>Day of Week: ${result.user_inputs['Day of Week']}</li>
+                            <li>Time: ${result.user_inputs['Time']}</li>
+                            <li>Distance (km): ${result.user_inputs['Distance (km)']}</li>
+                            <li>Call Type: ${result.user_inputs['Call Type']}</li>
+                        </ul>
+                    `;
+                } else {
+                    alert(result.error);
+                }
+            } catch (error) {
+                alert('Error connecting to the server: ' + error.message);
+            }
+        }
+
+        window.onload = toggleInput;
+    </script>
+</body>
+</html>
