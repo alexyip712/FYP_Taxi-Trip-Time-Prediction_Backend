@@ -1,12 +1,11 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # Import CORS
+from flask_cors import CORS
 import joblib
 import numpy as np
 import pandas as pd
 import logging
-from flask_cors import CORS
+
 app = Flask(__name__)
-CORS(app)
 
 # Enable CORS for all routes, allowing requests from your GitHub Pages origin
 CORS(app, resources={r"/predict": {"origins": "https://alexyip712.github.io"}})
@@ -18,12 +17,8 @@ logger = logging.getLogger(__name__)
 # Load models and scaler
 try:
     models = {
-        'Linear Regression': joblib.load('linear_regression_model.pkl'),
-        'Ridge Regression': joblib.load('ridge_regression_model.pkl'),
-        'Decision Tree': joblib.load('decision_tree_model.pkl'),
         'Random Forest': joblib.load('random_forest_model.pkl'),
-        'Gradient Boosting': joblib.load('gradient_boosting_model.pkl'),
-        'XGBoost': joblib.load('xgboost_model.pkl')
+        'Gradient Boosting': joblib.load('gradient_boosting_model.pkl')
     }
     scaler = joblib.load('scaler.pkl')
     logger.info("Models and scaler loaded successfully.")
