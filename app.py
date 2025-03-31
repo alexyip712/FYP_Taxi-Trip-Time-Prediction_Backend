@@ -3,8 +3,9 @@ import joblib
 import numpy as np
 import pandas as pd
 import logging
-
+from flask_cors import CORS
 app = Flask(__name__)
+CORS(app)
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
