@@ -1,10 +1,14 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import CORS
 import joblib
 import numpy as np
 import pandas as pd
 import logging
 
 app = Flask(__name__)
+
+# Enable CORS for all routes, allowing requests from your GitHub Pages origin
+CORS(app, resources={r"/predict": {"origins": "https://alexyip712.github.io"}})
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,7 +22,6 @@ try:
         'Decision Tree': joblib.load('decision_tree_model.pkl'),
         'Random Forest': joblib.load('random_forest_model.pkl'),
         'Gradient Boosting': joblib.load('gradient_boosting_model.pkl'),
-        #'K-Neighbors': joblib.load('k-neighbors_model.pkl'),
         'XGBoost': joblib.load('xgboost_model.pkl')
     }
     scaler = joblib.load('scaler.pkl')
@@ -35,6 +38,10 @@ def predict():
         
         selected_model = data['model']
         input_method = data['input_method']
+        
+        # Check if the selected model exists
+        if selected_model not in models:
+            return jsonify({'error': f"Model '{selected_model}' is not available."}), 400
         
         # Feature columns
         feature_columns = ['HOUR', 'MINUTE', 'DAY_OF_WEEK', 'DISTANCE_KM', 'CALL_TYPE_NUM', 
