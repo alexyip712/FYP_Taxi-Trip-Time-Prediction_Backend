@@ -4,7 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import logging
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 
 app = Flask(__name__)
 
@@ -15,21 +15,23 @@ CORS(app, resources={r"/predict": {"origins": "https://alexyip712.github.io"}})
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Define the custom EnsembleModel class
-class EnsembleModel(BaseEstimator, RegressorMixin):
-    def __init__(self, rf_model, gb_model):
-        self.rf_model = rf_model
-        self.gb_model = gb_model
+# Define the custom EnsembleModel class exactly as in the training script
+class EnsembleModel:
+    def __init__(self, rf_weight=0.5, gb_weight=0.5):
+        self.rf = RandomForestRegressor(n_estimators=200, max_depth=10, min_samples_split=5, random_state=42)
+        self.gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+        self.rf_weight = rf_weight
+        self.gb_weight = gb_weight
 
     def fit(self, X, y):
-        self.rf_model.fit(X, y)
-        self.gb_model.fit(X, y)
+        self.rf.fit(X, y)
+        self.gb.fit(X, y)
         return self
 
     def predict(self, X):
-        rf_pred = self.rf_model.predict(X)
-        gb_pred = self.gb_model.predict(X)
-        return (rf_pred + gb_pred) / 2  # Average predictions
+        rf_pred = self.rf.predict(X)
+        gb_pred = self.gb.predict(X)
+        return self.rf_weight * rf_pred + self.gb_weight * gb_pred
 
 # Load models and scaler
 try:
