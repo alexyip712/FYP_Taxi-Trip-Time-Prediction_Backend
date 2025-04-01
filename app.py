@@ -1,116 +1,99 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pandas as pd
 import joblib
 import numpy as np
+import pandas as pd
+import logging
 
 app = Flask(__name__)
-CORS(app)
 
-# Load the scaler and models
-scaler = joblib.load('scaler.pkl')
-models = {
-    'Random Forest': joblib.load('random_forest_model.pkl'),
-    'Gradient Boosting': joblib.load('gradient_boosting_model.pkl'),
-    'Neural Network': joblib.load('neural_network_model.pkl'),
-    'Ensemble (RF+GB)': joblib.load('ensemble_(rf+gb)_model.pkl')
-}
+# Enable CORS for all routes, allowing requests from your GitHub Pages origin
+CORS(app, resources={r"/predict": {"origins": "https://alexyip712.github.io"}})
 
-# Define feature columns
-FEATURES = ['HOUR', 'MINUTE', 'DAY_OF_WEEK', 'DISTANCE_KM', 'CALL_TYPE_NUM', 
-            'RUSH_HOUR', 'DISTANCE_KM_SQ', 'IS_WEEKEND', 'MINUTE_OF_DAY',
-            'DISTANCE_RUSH_INTERACTION', 'TRAFFIC_INTENSITY']
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Helper function to preprocess input data
-def preprocess_input(data):
-    # Extract and parse time
-    time_str = data['time']
-    hour, minute = map(int, time_str.split(':'))
-    
-    # Extract other inputs
-    distance_km = float(data['distance_km'])
-    call_type = data['call_type']
-    day_of_week = int(data['day_of_week'])
-    
-    # Engineer features
-    call_type_num = {'A': 0, 'B': 1, 'C': 2}.get(call_type, 1)
-    rush_hour = 1 if (7 <= hour <= 9 or 17 <= hour <= 19) else 0
-    distance_km_sq = distance_km ** 2
-    is_weekend = 1 if day_of_week >= 5 else 0
-    minute_of_day = hour * 60 + minute
-    distance_rush_interaction = distance_km * rush_hour
-    traffic_intensity = (2 if (is_weekend == 0 and (7 <= hour <= 9 or 17 <= hour <= 19)) else
-                        1 if (is_weekend == 0 and 9 < hour < 17) else 0)
-    
-    # Create feature array
-    features = [
-        hour, minute, day_of_week, distance_km, call_type_num,
-        rush_hour, distance_km_sq, is_weekend, minute_of_day,
-        distance_rush_interaction, traffic_intensity
-    ]
-    
-    # Scale features
-    features_scaled = scaler.transform([features])
-    return features_scaled, {
-        'Day of Week': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][day_of_week],
-        'Time': time_str,
-        'Distance (km)': distance_km,
-        'Call Type': call_type
+# Load models and scaler
+try:
+    models = {
+        'Random Forest': joblib.load('random_forest_model.pkl'),
+        'Gradient Boosting': joblib.load('gradient_boosting_model.pkl'),
+        'Neural Network': joblib.load('neural_network_model.pkl'),
+        'Ensemble (RF+GB)': joblib.load('ensemble_(rf+gb)_model.pkl')
     }
+    scaler = joblib.load('scaler.pkl')
+    logger.info("Models and scaler loaded successfully.")
+except Exception as e:
+    logger.error(f"Error loading models or scaler: {str(e)}")
+    raise
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
+        logger.debug(f"Received data: {data}")
         
-        # Validate inputs
-        required_fields = ['model', 'input_method', 'time', 'distance_km', 'call_type', 'day_of_week']
-        for field in required_fields:
-            if field not in data or not data[field]:
-                return jsonify({'error': f'Missing or empty field: {field}'}), 400
+        selected_model = data['model']
+        input_method = data['input_method']
         
-        # Validate model selection
-        if data['model'] not in models:
-            return jsonify({'error': 'Invalid model selected'}), 400
+        # Check if the selected model exists
+        if selected_model not in models:
+            return jsonify({'error': f"Model '{selected_model}' is not available."}), 400
         
-        # Validate time format
-        if len(data['time'].split(':')) != 2:
-            return jsonify({'error': 'Invalid time format. Use HH:MM (24-hour)'}), 400
+        # Feature columns
+        feature_columns = ['HOUR', 'MINUTE', 'DAY_OF_WEEK', 'DISTANCE_KM', 'CALL_TYPE_NUM', 
+                          'RUSH_HOUR', 'DISTANCE_KM_SQ', 'IS_WEEKEND', 'MINUTE_OF_DAY',
+                          'DISTANCE_RUSH_INTERACTION', 'TRAFFIC_INTENSITY']
         
-        # Validate distance
-        try:
+        if input_method == 'datetime':
+            hour, minute = map(int, data['time'].split(':'))
             distance_km = float(data['distance_km'])
-            if distance_km <= 0 or distance_km > 1000:
-                raise ValueError
-        except ValueError:
-            return jsonify({'error': 'Distance must be a number between 0 and 1000 km'}), 400
-        
-        # Validate call type
-        if data['call_type'] not in ['A', 'B', 'C']:
-            return jsonify({'error': 'Call Type must be A, B, or C'}), 400
-        
-        # Validate day of week
-        try:
+            call_type = data['call_type']
             day_of_week = int(data['day_of_week'])
-            if day_of_week < 0 or day_of_week > 6:
-                raise ValueError
-        except ValueError:
-            return jsonify({'error': 'Day of Week must be a number between 0 (Monday) and 6 (Sunday)'}), 400
+        else:  # map
+            hour, minute = map(int, data['time'].split(':'))
+            distance_km = float(data['distance_km'])
+            call_type = data['call_type']
+            day_of_week = int(data['day_of_week'])
         
-        # Preprocess input data
-        features_scaled, user_inputs = preprocess_input(data)
+        # Add distance limit (1000 km)
+        if distance_km > 1000:
+            return jsonify({'error': 'Distance cannot exceed 1000 km.'}), 400
         
-        # Make prediction (convert hours to minutes)
-        selected_model = models[data['model']]
-        prediction_hours = selected_model.predict(features_scaled)[0]
-        prediction_minutes = prediction_hours * 60
+        # Engineer features
+        rush_hour = 1 if (7 <= hour <= 9 or 17 <= hour <= 19) else 0
+        distance_km_sq = distance_km ** 2
+        call_type_num = {'A': 0, 'B': 1, 'C': 2}[call_type]
+        is_weekend = 1 if day_of_week >= 5 else 0
+        minute_of_day = hour * 60 + minute
+        distance_rush_interaction = distance_km * rush_hour
+        traffic_intensity = 2 if (is_weekend == 0 and (7 <= hour <= 9 or 17 <= hour <= 19)) else \
+                           1 if (is_weekend == 0 and 9 < hour < 17) else 0
+        
+        features = pd.DataFrame([[hour, minute, day_of_week, distance_km, 
+                                 call_type_num, rush_hour, distance_km_sq, 
+                                 is_weekend, minute_of_day, distance_rush_interaction, 
+                                 traffic_intensity]], columns=feature_columns)
+        features = scaler.transform(features)
+        
+        # Predict
+        model = models[selected_model]
+        prediction = model.predict(features)[0] * 60
+        logger.info(f"Prediction successful: Model={selected_model}, Prediction={prediction:.2f} minutes")
         
         return jsonify({
-            'prediction': prediction_minutes,
-            'user_inputs': user_inputs
+            'prediction': prediction,
+            'user_inputs': {
+                'Day of Week': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][day_of_week],
+                'Time': f"{hour:02d}:{minute:02d}",
+                'Distance (km)': f"{distance_km:.2f}",
+                'Call Type': call_type
+            }
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error during prediction: {str(e)}")
+        return jsonify({'error': str(e)}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
