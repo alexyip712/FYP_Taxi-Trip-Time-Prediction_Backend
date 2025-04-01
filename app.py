@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import logging
+from sklearn.base import BaseEstimator, RegressorMixin
 
 app = Flask(__name__)
 
@@ -13,6 +14,22 @@ CORS(app, resources={r"/predict": {"origins": "https://alexyip712.github.io"}})
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Define the custom EnsembleModel class
+class EnsembleModel(BaseEstimator, RegressorMixin):
+    def __init__(self, rf_model, gb_model):
+        self.rf_model = rf_model
+        self.gb_model = gb_model
+
+    def fit(self, X, y):
+        self.rf_model.fit(X, y)
+        self.gb_model.fit(X, y)
+        return self
+
+    def predict(self, X):
+        rf_pred = self.rf_model.predict(X)
+        gb_pred = self.gb_model.predict(X)
+        return (rf_pred + gb_pred) / 2  # Average predictions
 
 # Load models and scaler
 try:
