@@ -19,8 +19,8 @@ try:
     models = {
         'Random Forest': joblib.load('random_forest_model.pkl'),
         'Gradient Boosting': joblib.load('gradient_boosting_model.pkl'),
-        #'Neural Network': joblib.load('neural_network_model.pkl'),
-        #'Ensemble (RF+GB)': joblib.load('ensemble_(rf+gb)_model.pkl')
+        'Neural Network': joblib.load('neural_network_model.pkl'),
+        'Ensemble (RF+GB)': joblib.load('ensemble_(rf+gb)_model.pkl')
     }
     scaler = joblib.load('scaler.pkl')
     logger.info("Models and scaler loaded successfully.")
