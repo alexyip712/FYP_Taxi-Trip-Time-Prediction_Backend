@@ -12,8 +12,8 @@ CORS(app)
 #CORS(app, resources={r"/predict": {"origins": "https://alexyip712.github.io"}})
 
 # Set up logging
-#logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-#logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Define the custom EnsembleModel class exactly as in the training script
 class EnsembleModel:
