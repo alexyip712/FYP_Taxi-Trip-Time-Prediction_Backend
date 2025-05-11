@@ -7,7 +7,7 @@ import logging
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 
 app = Flask(__name__)
-
+CORS(app)
 # Enable CORS for all routes, allowing requests from your GitHub Pages origin
 #CORS(app, resources={r"/predict": {"origins": "https://alexyip712.github.io"}})
 
